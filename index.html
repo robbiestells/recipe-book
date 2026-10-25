@@ -113,7 +113,7 @@ textarea.field{resize:vertical;min-height:90px;line-height:1.45}
 @media (prefers-reduced-motion:reduce){.panel{animation:none}}
 .phead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px}
 .phead h2{font-size:23px;line-height:1.2}
-.seg{display:grid;grid-template-columns:repeat(3,1fr);background:var(--sunk);border-radius:10px;padding:3px;margin-bottom:14px}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);background:var(--sunk);border-radius:10px;padding:3px;margin-bottom:14px}
 .seg button{border:none;background:transparent;border-radius:8px;padding:7px 4px;font-size:13px;font-weight:600;color:var(--muted)}
 .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink)}
 .form{display:grid;gap:12px}
@@ -277,19 +277,37 @@ function toJpeg(file){return new Promise((ok,bad)=>{const img=new Image();img.on
 function parseJSON(t){try{return JSON.parse(t)}catch(e){}const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f){try{return JSON.parse(f[1])}catch(e){}}const a=t.indexOf("{"),b=t.lastIndexOf("}");if(a>=0&&b>a){try{return JSON.parse(t.slice(a,b+1))}catch(e){}}throw{code:"invalid_json"}}
 const apiSample={api:true,
   limits:async()=>({images:{maxCount:6,mediaTypes:["image/jpeg","image/png","image/webp","image/gif","image/heic"]}}),
-  json:async(input,opt={})=>{const key=apiKey();if(!key)throw{code:"no_key"};
+  json:async(input,opt={})=>{
     const content=[];for(const f of [...(opt.images||[])])content.push({type:"image",source:{type:"base64",media_type:"image/jpeg",data:await toJpeg(f)}});
     content.push({type:"text",text:input});
-    let res;try{res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",signal:opt.signal,headers:{"content-type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:MODEL,max_tokens:8000,messages:[{role:"user",content}]})})}
-    catch(e){throw{code:e&&e.name==="AbortError"?"cancelled":"upstream_error"}}
-    if(!res.ok)throw{code:res.status===401||res.status===403?"bad_key":res.status===429?"rate_limited":res.status===413?"prompt_too_large":res.status===400?"bad_request":"upstream_error"};
-    const j=await res.json();return parseJSON((j.content||[]).filter(b=>b.type==="text").map(b=>b.text).join(""))}};
+    const blocks=await apiCall({messages:[{role:"user",content}]},opt.signal);
+    return parseJSON(blocks.filter(b=>b.type==="text").map(b=>b.text).join(""))},
+  /* Anthropic fetches the page server-side with its web fetch tool, so the browser's cross-site limits don't apply. */
+  fromUrl:async(url,prompt,signal)=>{
+    const messages=[{role:"user",content:`Fetch this recipe page with the web_fetch tool: ${url}\n\n${prompt}`}];
+    const tools=[{type:"web_fetch_20250910",name:"web_fetch",max_uses:3,max_content_tokens:40000}];
+    let all=[];
+    for(let round=0;round<4;round++){const r=await apiCall({messages,tools},signal,true);all=all.concat(r.content);
+      if(r.stop_reason!=="pause_turn")break;messages.push({role:"assistant",content:r.content})}
+    const errs=all.filter(b=>b.type==="web_fetch_tool_result"&&b.content&&b.content.type==="web_fetch_tool_result_error").map(b=>b.content.error_code);
+    const ok=all.some(b=>b.type==="web_fetch_tool_result"&&b.content&&b.content.type==="web_fetch_result");
+    if(!ok&&errs.length)throw{code:"fetch_"+errs[errs.length-1]};
+    let last=-1;all.forEach((b,i)=>{if(b.type==="web_fetch_tool_result")last=i});
+    const text=all.slice(last+1).filter(b=>b.type==="text").map(b=>b.text).join("");
+    if(!ok&&!text)throw{code:"fetch_url_not_accessible"};
+    return parseJSON(text)}};
+async function apiCall(body,signal,full){const key=apiKey();if(!key)throw{code:"no_key"};
+  let res;try{res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",signal,headers:{"content-type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:MODEL,max_tokens:8000,...body})})}
+  catch(e){throw{code:e&&e.name==="AbortError"?"cancelled":"upstream_error"}}
+  if(!res.ok){let m="";try{m=(await res.json()).error?.message||""}catch(x){}
+    throw{code:res.status===401||res.status===403?"bad_key":res.status===429?"rate_limited":res.status===413?"prompt_too_large":res.status===400?(/web.?fetch/i.test(m)?"fetch_disabled":"bad_request"):"upstream_error"}}
+  const j=await res.json();return full?j:(j.content||[])}
 let sampleP=null;
 function getSample(){if(!sampleP)sampleP=((window.claude&&claude.use)?claude.use("sample"):Promise.resolve(null)).then(s=>s||apiSample);return sampleP}
 function openSettings(){const k=apiKey();
   openSheet(`<div class="phead"><h2>Settings</h2>${closeBtn}</div>
   <form class="form" id="keyForm"><label>Anthropic API key<input class="field" id="keyIn" type="password" autocomplete="off" placeholder="sk-ant-…" value="${esc(k)}"></label>
-  <p class="hint">Reading screenshots and pasted recipes uses your own API key, billed to your Anthropic account. The key is stored only in this browser and is sent only to Anthropic. Create one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.</p>
+  <p class="hint">Importing from websites, screenshots and pasted text uses your own API key, billed to your Anthropic account. The key is stored only in this browser and is sent only to Anthropic. Create one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.</p>
   <div class="row"><button class="btn primary" type="submit">Save key</button>${k?'<button class="btn danger" type="button" data-act="forgetKey">Remove key</button>':""}</div></form>`);
   $("keyForm").addEventListener("submit",e=>{e.preventDefault();const v=$("keyIn").value.trim();try{v?localStorage.setItem(KEYK,v):localStorage.removeItem(KEYK)}catch(x){}closeSheet();toast(v?"API key saved":"API key removed")})}
 
@@ -373,38 +391,42 @@ function openDayPicker(){const r=S.recipes[openId];const start=new Date();let ht
   openSheet(`<div class="phead"><div><h2>Which day?</h2><div class="meta">${esc(r.title)}</div></div>${closeBtn}</div><div class="pick">${html}</div>`)}
 
 /* ---------- add / import / edit ---------- */
-let importMode="shot",shotFiles=[],importCtl=null;
+let importMode="web",shotFiles=[],importCtl=null;
 async function openAdd(){
   openSheet(`<div class="phead"><h2>Add a recipe</h2>${closeBtn}</div>
-  <div class="seg"><button data-act="mode" data-m="shot" aria-pressed="${importMode==="shot"}">Screenshot</button><button data-act="mode" data-m="link" aria-pressed="${importMode==="link"}">Link or text</button><button data-act="mode" data-m="type" aria-pressed="${importMode==="type"}">Type it in</button></div>
+  <div class="seg"><button data-act="mode" data-m="web" aria-pressed="${importMode==="web"}">Website</button><button data-act="mode" data-m="shot" aria-pressed="${importMode==="shot"}">Screenshot</button><button data-act="mode" data-m="link" aria-pressed="${importMode==="link"}">Paste text</button><button data-act="mode" data-m="type" aria-pressed="${importMode==="type"}">Type it</button></div>
   <div id="addBody"></div>`);drawAdd()}
 async function drawAdd(){const b=$("addBody");if(!b)return;
   document.querySelectorAll(".seg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.m===importMode));
   if(importMode==="type"){b.innerHTML=`<p class="hint">Start with a blank recipe card.</p><div style="margin-top:12px"><button class="btn primary" data-act="blank">Start a blank recipe</button></div>`;return}
   const sample=await getSample();
   if(!$("addBody"))return;
-  if(sample.api&&!apiKey()){b.innerHTML=`<p class="hint">To read recipes from screenshots or pasted text, add your Anthropic API key in Settings. It stays in this browser.</p><div class="row" style="margin-top:12px"><button class="btn primary" data-act="settings">Add API key</button><button class="btn" data-act="mode" data-m="type">Type it in instead</button></div>`;return}
+  if(sample.api&&!apiKey()){b.innerHTML=`<p class="hint">To import recipes from websites, screenshots or pasted text, add your Anthropic API key in Settings. It stays in this browser.</p><div class="row" style="margin-top:12px"><button class="btn primary" data-act="settings">Add API key</button><button class="btn" data-act="mode" data-m="type">Type it in instead</button></div>`;return}
   if(!sample){b.innerHTML=`<p class="hint">Reading recipes automatically works when this page is open in Claude. You can still type a recipe in.</p><div style="margin-top:12px"><button class="btn" data-act="mode" data-m="type">Type it in instead</button></div>`;return}
   if(importMode==="shot"){const lim=await sample.limits().catch(()=>null);
-    if(!lim||!lim.images){b.innerHTML=`<p class="hint">Screenshots can't be sent from this view. Copy the recipe text and use “Link or text” instead.</p>`;return}
+    if(!lim||!lim.images){b.innerHTML=`<p class="hint">Screenshots can't be sent from this view. Copy the recipe text and use “Paste text” instead.</p>`;return}
     b.innerHTML=`<div class="form"><label class="drop" for="shotIn"><b style="color:var(--ink)">Choose screenshots</b><span class="hint">Up to ${lim.images.maxCount} images, in order. Long recipes can span several screenshots.</span><input type="file" id="shotIn" accept="${esc(lim.images.mediaTypes.join(","))}" multiple hidden></label><div class="thumbs" id="thumbs"></div><div id="impStatus"></div><div><button class="btn primary" data-act="readShot" id="readBtn" ${shotFiles.length?"":"disabled"}>Read recipe</button></div></div>`;
     $("shotIn").addEventListener("change",e=>{shotFiles=[...e.target.files].slice(0,lim.images.maxCount);drawThumbs()});drawThumbs()}
-  else{b.innerHTML=`<div class="form"><label>Recipe link<input class="field" id="linkIn" type="url" placeholder="https://…" inputmode="url"></label><label>Recipe text<textarea class="field" id="textIn" rows="7" placeholder="Paste the recipe here"></textarea></label><p class="hint">Recipe sites can't be opened from inside this page, so open the link, select the recipe (or the whole page), copy it, and paste it above. The link is saved with the recipe. A screenshot of the page works too.</p><div id="impStatus"></div><div><button class="btn primary" data-act="readText" id="readBtn">Read recipe</button></div></div>`}}
+  else if(importMode==="web"){
+    if(!sample.fromUrl){b.innerHTML=`<p class="hint">Website import isn't available in this view. Copy the recipe from the site and use “Paste text”.</p>`;return}
+    b.innerHTML=`<form class="form" id="webForm"><label>Recipe page address<input class="field" id="urlIn" type="url" required placeholder="https://www.example.com/best-chili" inputmode="url" autocomplete="off"></label><p class="hint">Paste the link to a recipe page. Claude opens the page, skips the ads and life story, and pulls out the ingredients and steps. Sites that need a login or block automated visits won't work; use a screenshot or paste the text instead.</p><div id="impStatus"></div><div><button class="btn primary" type="submit" id="readBtn">Import recipe</button></div></form>`;
+    $("webForm").addEventListener("submit",e=>{e.preventDefault();let u=$("urlIn").value.trim();if(!/^https?:\/\//i.test(u))u="https://"+u;if(u.length>250){$("impStatus").innerHTML=`<p class="err">That link is too long. Try the page's shorter address, without tracking codes after the “?”.</p>`;return}runImport(null,null,u,true)})}
+  else{b.innerHTML=`<div class="form"><label>Recipe text<textarea class="field" id="textIn" rows="8" placeholder="Paste the recipe here"></textarea></label><label>Link (optional)<input class="field" id="linkIn" type="url" placeholder="https://…" inputmode="url"></label><p class="hint">Copy the recipe (or the whole page) from a website, app or message and paste it above.</p><div id="impStatus"></div><div><button class="btn primary" data-act="readText" id="readBtn">Read recipe</button></div></div>`}}
 function drawThumbs(){const t=$("thumbs");if(!t)return;t.innerHTML="";shotFiles.forEach(f=>{const im=document.createElement("img");im.alt="";im.src=URL.createObjectURL(f);t.append(im)});const rb=$("readBtn");if(rb)rb.disabled=!shotFiles.length}
 
 const PROMPT=`Extract the recipe. Reply with only one JSON object in this shape:
 {"title":string,"category":one of ${JSON.stringify(CATS)},"tags":[up to 4 short lowercase tags such as cuisine, main protein, "vegetarian", "quick"],"servings":number|null,"time":string|null (total time like "45 min"),"ingredients":[{"qty":number|null (decimals, e.g. 1.5 for 1 1/2),"unit":string ("" if none; use tsp, tbsp, cup, oz, lb, g, kg, ml, l, clove, can, pinch, bunch, slice, package, stick),"item":string (the ingredient name only, e.g. "yellow onion"),"note":string (prep or detail like "diced", "" if none),"section":one of ${JSON.stringify(SECTIONS)}}],"steps":[string, one per step, short and complete],"notes":string ("" if none)}
 Ignore ads, life stories, comments and nutrition panels. If there is no recipe, reply {"error":"short reason"}.`;
-async function runImport(images,text,source){
+async function runImport(images,text,source,fromWeb){
   const st=$("impStatus"),rb=$("readBtn");const sample=await getSample();if(!sample)return;
   importCtl=new AbortController();const ctl=importCtl;
   rb.disabled=true;st.innerHTML=`<div class="status"><span class="spin"></span>Reading the recipe. This usually takes 20–60 seconds.<button class="btn ghost" data-act="stopImport">Stop</button></div>`;
   try{const input=PROMPT+(text?"\n\nRecipe text:\n"+text.slice(0,40000):"\n\nThe recipe is in the attached screenshot(s), shown in order.");
-    const out=await sample.json(input,images?{images,signal:ctl.signal}:{signal:ctl.signal});
+    const out=fromWeb?await sample.fromUrl(source,PROMPT,ctl.signal):await sample.json(input,images?{images,signal:ctl.signal}:{signal:ctl.signal});
     if(!out||typeof out!=="object"||out.error||!out.title){st.innerHTML=`<p class="err">${esc(out&&out.error?"No recipe found: "+out.error:"Couldn't find a recipe in that. Try a clearer screenshot or paste the recipe text.")}</p>`;rb.disabled=false;return}
     shotFiles=[];openEdit(null,{...out,source})}
   catch(e){if(!$("impStatus"))return;const c=e&&e.code;
-    const msg=c==="cancelled"?"":c==="not_granted"||c==="sampling_disabled"?"Claude isn't allowed to read recipes here. You can still type the recipe in.":c==="rate_limited"?"Too many requests right now. Wait a minute and try again.":c==="image_rejected"?"One of the images couldn't be read. Use JPEG or PNG screenshots.":c==="invalid_json"?"The recipe came back in a form I couldn't read. Try again.":c==="prompt_too_large"?"That text is too long. Paste just the recipe part.":c==="no_key"?"Add your API key in Settings first.":c==="bad_key"?"Anthropic rejected the API key. Check it in Settings.":c==="bad_request"?"Anthropic couldn't process that request. Try fewer or smaller screenshots.":"Something went wrong reading the recipe. Try again.";
+    const msg=c==="cancelled"?"":c==="not_granted"||c==="sampling_disabled"?"Claude isn't allowed to read recipes here. You can still type the recipe in.":c==="rate_limited"?"Too many requests right now. Wait a minute and try again.":c==="image_rejected"?"One of the images couldn't be read. Use JPEG or PNG screenshots.":c==="invalid_json"?"The recipe came back in a form I couldn't read. Try again.":c==="prompt_too_large"?"That text is too long. Paste just the recipe part.":c==="no_key"?"Add your API key in Settings first.":c==="bad_key"?"Anthropic rejected the API key. Check it in Settings.":c==="bad_request"?"Anthropic couldn't process that request. Try fewer or smaller screenshots.":c==="fetch_disabled"?"Website fetching is turned off for this API key's organization. Use a screenshot or paste the text.":c==="fetch_url_not_accessible"?"That page couldn't be opened. Check the link, or use a screenshot or pasted text.":c==="fetch_url_not_allowed"?"That site doesn't allow automated visits. Use a screenshot or paste the text instead.":c==="fetch_unsupported_content_type"?"That link isn't a web page or PDF.":c==="fetch_invalid_tool_input"||c==="fetch_url_too_long"?"That link doesn't look right. Check it and try again.":c==="fetch_too_many_requests"?"Too many page requests right now. Wait a minute and try again.":String(c||"").startsWith("fetch_")?"The page couldn't be read. Try a screenshot or pasted text.":"Something went wrong reading the recipe. Try again.";
     $("impStatus").innerHTML=msg?`<p class="err">${msg}</p>`:"";const b2=$("readBtn");if(b2)b2.disabled=false}
   finally{if(importCtl===ctl)importCtl=null}}
 
@@ -470,7 +492,7 @@ document.addEventListener("click",e=>{
   else if(a==="mode"){importMode=t.dataset.m;drawAdd()}
   else if(a==="blank"){openEdit(null,null)}
   else if(a==="readShot"){if(shotFiles.length)runImport(shotFiles,null,"")}
-  else if(a==="readText"){const txt=$("textIn").value.trim(),url=$("linkIn").value.trim();if(!txt){$("impStatus").innerHTML=`<p class="err">Paste the recipe text first. The page behind the link can't be opened from here.</p>`;return}runImport(null,txt,url)}
+  else if(a==="readText"){const txt=$("textIn").value.trim(),url=$("linkIn").value.trim();if(!txt){$("impStatus").innerHTML=`<p class="err">Paste the recipe text first. To import straight from a link, use the Website tab.</p>`;return}runImport(null,txt,url)}
   else if(a==="stopImport"){if(importCtl)importCtl.abort()}
   else if(a==="extraDel"){const w=shopWeek();w.extras.splice(+t.dataset.ix,1);persist("shop");renderShop();renderBadge()}
   else if(a==="clearChecked"){const w=shopWeek(),items=shoppingItems(S.week);let n=0;items.forEach(i=>{if(w.checked[i.key])n++});const ex=w.extras.filter(x=>x.done).length;
