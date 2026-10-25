@@ -53,7 +53,13 @@ textarea.field{resize:vertical;min-height:90px;line-height:1.45}
 .chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:5px 12px;font-size:13px;font-weight:500;white-space:nowrap;color:var(--muted)}
 .chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;text-align:left;display:flex;flex-direction:column;gap:6px;min-width:0}
+.card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);min-width:0}
+.cardmain{border:none;background:none;width:100%;border-radius:inherit;text-align:left;padding:14px 48px 14px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.star{position:absolute;top:6px;right:6px;border:none;background:transparent;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:var(--muted)}
+.star:hover{background:var(--sunk)}
+.star[aria-pressed="true"]{color:var(--saffron)}
+.banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--basil);border-radius:var(--r);padding:12px 14px;margin-bottom:14px}
+.banner p{margin:0;font-size:14px;max-width:48ch}
 .card:hover{border-color:var(--muted)}
 .card h3{font-size:17px;line-height:1.25}
 .meta{font-family:var(--f-mono);font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 10px}
@@ -151,11 +157,12 @@ a{color:var(--basil)}
 
 <header class="top"><div class="wrap">
   <div class="brand">Mise en Place <small id="modeTag"></small></div>
-  <div class="row"><button class="iconbtn" data-act="settings" id="setBtn" aria-label="Settings" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></button><button class="btn primary" data-act="add" id="addBtn">+ Add recipe</button></div>
+  <div class="row"><button class="iconbtn" data-act="settings" id="setBtn" aria-label="Settings"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></button><button class="btn primary" data-act="add" id="addBtn">+ Add recipe</button></div>
 </div></header>
 
 <main class="wrap">
   <section id="v-recipes">
+    <div class="banner" id="signBanner" hidden><p><b>Keep your recipes safe.</b> Sign in to save recipes, favorites and shopping lists to your account and use them on any device.</p><button class="btn primary" data-act="settings">Sign in</button></div>
     <div class="search"><input id="q" class="field" type="search" placeholder="Search recipes, tags or ingredients" autocomplete="off"></div>
     <div class="chips" id="cats"></div>
     <div id="recipeList"></div>
@@ -194,6 +201,8 @@ a{color:var(--basil)}
 <div class="sheet" id="sheet" hidden><div class="sheet-bg" data-act="close"></div><div class="panel" role="dialog" aria-modal="true" id="panel"></div></div>
 <div class="toast" id="toast" hidden></div>
 
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 const SECTIONS=["Produce","Meat & Seafood","Dairy & Eggs","Bakery","Pantry","Spices","Frozen","Other"];
 const CATS=["Breakfast","Lunch","Dinner","Side","Soup & Stew","Salad","Snack","Dessert","Drink","Baking","Sauce"];
@@ -242,33 +251,64 @@ const LKEY="mise-v1";
 function loadLocal(){try{const d=JSON.parse(localStorage.getItem(LKEY)||"null");if(d){S.recipes=d.recipes||{};S.plan=d.plan||{days:{}};S.shop=d.shop||{weeks:{}}}}catch(e){}}
 function saveLocal(){try{localStorage.setItem(LKEY,JSON.stringify({recipes:S.recipes,plan:S.plan,shop:S.shop}))}catch(e){}}
 function docFor(id){return id==="plan"?S.plan:id==="shop"?S.shop:S.recipes[id]}
-function persist(id){
-  if(id==="plan")prunePlan();
-  if(mode!=="db"){saveLocal();return}
-  const body=clone(docFor(id));
-  queues[id]=(queues[id]||Promise.resolve()).then(()=>col.doc(id).set(body)).catch(e=>toast(e&&e.code==="quota_exceeded"?"Storage is full. Delete a few recipes, then try again.":"Couldn't save that change. Check your connection and try again."))}
-function remove(id){if(mode!=="db"){saveLocal();return}
-  queues[id]=(queues[id]||Promise.resolve()).then(()=>col.doc(id).delete()).catch(()=>toast("Couldn't delete. Try again."))}
+/* Cloud storage: one Supabase table, recipe_docs(user_id, id, data jsonb). Rows are recipes ("r_…"), the meal "plan" and the "shop" list.
+   Row-level security keeps each person's rows private. This browser keeps a cache so the app opens instantly and works offline. */
+const CFG=window.MISE_CONFIG||{},OWNK="mise-owner",DIRTYK="mise-dirty",TABLE="recipe_docs";
+let sb=null,user=null,pending=0,syncing=false,firstSync=true;
+function cloud(){return mode==="cloud"&&sb&&user}
+function getDirty(){try{return new Set(JSON.parse(localStorage.getItem(DIRTYK)||"[]"))}catch(e){return new Set()}}
+function setDirty(set){try{set.size?localStorage.setItem(DIRTYK,JSON.stringify([...set])):localStorage.removeItem(DIRTYK)}catch(e){}}
+function markDirty(id,on){const d=getDirty();on?d.add(id):d.delete(id);setDirty(d)}
+async function upsertDoc(id){const doc=docFor(id);if(!doc)return deleteDoc(id);
+  const{error}=await sb.from(TABLE).upsert({user_id:user.id,id,data:clone(doc),updated_at:new Date().toISOString()},{onConflict:"user_id,id"});if(error)throw error}
+async function deleteDoc(id){const{error}=await sb.from(TABLE).delete().eq("user_id",user.id).eq("id",id);if(error)throw error}
+function queue(id,fn){pending++;markDirty(id,true);
+  queues[id]=(queues[id]||Promise.resolve()).then(fn).then(()=>markDirty(id,false)).catch(()=>{setSync("offline");toast("Couldn't reach your account. The change is kept here and will sync later.")}).finally(()=>pending--)}
+function persist(id){if(id==="plan")prunePlan();saveLocal();if(cloud())queue(id,()=>upsertDoc(id))}
+function remove(id){saveLocal();if(cloud())queue(id,()=>deleteDoc(id))}
 function prunePlan(){const cut=dkey(addDays(new Date(),-70));for(const k in S.plan.days){if(k<cut||!S.plan.days[k].length)delete S.plan.days[k]}
   for(const k in S.shop.weeks)if(k<cut)delete S.shop.weeks[k]}
 
-async function connect(){
-  if(!window.claude||!claude.use){showLocal();return}
-  const [db,user]=await Promise.all([claude.use("db"),claude.use("user")]);
-  const id=user?await user.id():null;
-  if(!db||!id){showLocal();return}
-  col=db.collection("data/users/"+id);mode="db";$("localNote").hidden=true;
-  let first=true;
-  col.onSnapshot(snap=>{
-    if(first){first=false;
-      if(snap.empty&&Object.keys(S.recipes).length){ // move this-browser recipes into the account
-        Object.keys(S.recipes).forEach(persist);persist("plan");persist("shop");render();return}}
-    const rec={};let plan=null,shop=null;
-    snap.docs.forEach(d=>{const v=d.data();if(!v)return;if(d.id.startsWith("r_"))rec[d.id]=clone(v);else if(d.id==="plan")plan=clone(v);else if(d.id==="shop")shop=clone(v)});
-    S.recipes=rec;S.plan=plan&&plan.days?plan:{days:{}};S.shop=shop&&shop.weeks?shop:{weeks:{}};render()
-  },e=>{if(e.code==="revoked"||e.code==="not_granted"){mode="local";showLocal()}else toast("Lost the connection to your saved recipes. Reload to try again.")})
-}
-function showLocal(){$("localNote").hidden=false;$("setBtn").hidden=false}
+async function pull(){
+  if(!cloud()||syncing||pending)return;syncing=true;setSync("syncing");
+  try{
+    for(const id of getDirty()){if(docFor(id))await upsertDoc(id);else await deleteDoc(id);markDirty(id,false)}
+    const{data,error}=await sb.from(TABLE).select("id,data");if(error)throw error;
+    if(pending)return;
+    const remote={};data.forEach(r=>remote[r.id]=r.data);
+    if(firstSync){firstSync=false;let owner=null;try{owner=localStorage.getItem(OWNK)}catch(e){}
+      if(owner&&owner!==user.id){S.recipes={};S.plan={days:{}};S.shop={weeks:{}}}
+      else if(!owner){ // recipes made before signing in move into the account
+        const up=[];for(const id in S.recipes)if(!remote[id]){remote[id]=S.recipes[id];up.push(id)}
+        if(!remote.plan&&Object.keys(S.plan.days).length){remote.plan=S.plan;up.push("plan")}
+        if(!remote.shop&&Object.keys(S.shop.weeks).length){remote.shop=S.shop;up.push("shop")}
+        for(const id of up)await upsertDoc(id);if(up.length)toast("Moved "+up.length+" item"+(up.length===1?"":"s")+" from this device into your account")}
+      try{localStorage.setItem(OWNK,user.id)}catch(e){}}
+    const rec={};for(const id in remote)if(id.startsWith("r_")&&remote[id])rec[id]=remote[id];
+    S.recipes=rec;S.plan=remote.plan&&remote.plan.days?remote.plan:{days:{}};S.shop=remote.shop&&remote.shop.weeks?remote.shop:{weeks:{}};
+    saveLocal();render();setSync("ok")}
+  catch(e){setSync("offline")}
+  finally{syncing=false}}
+
+function initCloud(){
+  if(!CFG.supabaseUrl||!CFG.supabaseKey){setSync();return}
+  if(!window.supabase||!supabase.createClient){setSync("unavailable");return}
+  sb=supabase.createClient(CFG.supabaseUrl,CFG.supabaseKey);
+  sb.auth.onAuthStateChange((ev,session)=>{const u=session&&session.user||null;
+    if((u&&u.id)!==(user&&user.id)){user=u;mode=u?"cloud":"local";firstSync=true;setSync();if(u)setTimeout(pull,0)}
+    if(ev==="SIGNED_IN"&&location.hash.includes("access_token"))history.replaceState(null,"",location.pathname)});
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")pull()});
+  window.addEventListener("online",()=>pull())}
+let syncState="";
+function setSync(s){if(s!==undefined)syncState=s;const n=$("localNote"),b=$("signBanner");
+  const configured=!!sb;
+  b.hidden=!configured||!!user;
+  n.textContent=user?(syncState==="offline"?"Offline. Changes are kept here and sync when you reconnect.":"Synced to your account ("+(user.email||"signed in")+")."):
+    syncState==="unavailable"?"Couldn't load the sync service, so recipes are saved in this browser only.":configured?"Saved in this browser only. Sign in to keep recipes in your account.":"Recipes, plans and lists are saved in this browser on this device.";
+  n.hidden=false}
+async function sendLink(email){const{error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});if(error)throw error}
+async function signOut(){await sb.auth.signOut().catch(()=>{});S.recipes={};S.plan={days:{}};S.shop={weeks:{}};try{localStorage.removeItem(LKEY);localStorage.removeItem(OWNK);localStorage.removeItem(DIRTYK)}catch(e){}render();closeSheet();toast("Signed out")}
+function toggleFav(id){const r=S.recipes[id];if(!r)return;r.fav=!r.fav;r.updated=Date.now();persist(id);render();toast(r.fav?"Added to favorites":"Removed from favorites")}
 
 /* ---------- recipe reading: Claude in-app, or the viewer's own API key outside Claude ---------- */
 const KEYK="mise-api-key",MODEL="claude-sonnet-5-5";
@@ -305,26 +345,34 @@ async function apiCall(body,signal,full){const key=apiKey();if(!key)throw{code:"
 let sampleP=null;
 function getSample(){if(!sampleP)sampleP=((window.claude&&claude.use)?claude.use("sample"):Promise.resolve(null)).then(s=>s||apiSample);return sampleP}
 function openSettings(){const k=apiKey();
+  const acct=!sb?(CFG.supabaseUrl?`<p class="hint">The sync service didn't load. Check your connection and reload.</p>`:`<p class="hint">Account sync isn't set up for this site yet, so recipes are saved in this browser.</p>`):
+    user?`<p style="margin:0">Signed in as <b>${esc(user.email||"")}</b>. Recipes, favorites, plans and shopping lists are saved to your account.</p><div class="row"><button class="btn" type="button" data-act="syncNow">Sync now</button><button class="btn danger" type="button" data-act="signOut">Sign out</button></div>`:
+    `<form class="form" id="signForm"><label>Email<input class="field" id="emailIn" type="email" required autocomplete="email" placeholder="you@example.com"></label><p class="hint">We'll email you a sign-in link. Open it on this device to finish signing in. Recipes already in this browser move into your account.</p><div id="signStatus"></div><div><button class="btn primary" type="submit" id="signBtn">Email me a sign-in link</button></div></form>`;
   openSheet(`<div class="phead"><h2>Settings</h2>${closeBtn}</div>
-  <form class="form" id="keyForm"><label>Anthropic API key<input class="field" id="keyIn" type="password" autocomplete="off" placeholder="sk-ant-…" value="${esc(k)}"></label>
+  <div class="form"><h3 style="font-size:16px">Account</h3>${acct}</div>
+  <hr style="border:none;border-top:1px solid var(--line);margin:20px 0">
+  <form class="form" id="keyForm"><h3 style="font-size:16px">Recipe import</h3><label>Anthropic API key<input class="field" id="keyIn" type="password" autocomplete="off" placeholder="sk-ant-…" value="${esc(k)}"></label>
   <p class="hint">Importing from websites, screenshots and pasted text uses your own API key, billed to your Anthropic account. The key is stored only in this browser and is sent only to Anthropic. Create one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.</p>
   <div class="row"><button class="btn primary" type="submit">Save key</button>${k?'<button class="btn danger" type="button" data-act="forgetKey">Remove key</button>':""}</div></form>`);
-  $("keyForm").addEventListener("submit",e=>{e.preventDefault();const v=$("keyIn").value.trim();try{v?localStorage.setItem(KEYK,v):localStorage.removeItem(KEYK)}catch(x){}closeSheet();toast(v?"API key saved":"API key removed")})}
+  $("keyForm").addEventListener("submit",e=>{e.preventDefault();const v=$("keyIn").value.trim();try{v?localStorage.setItem(KEYK,v):localStorage.removeItem(KEYK)}catch(x){}closeSheet();toast(v?"API key saved":"API key removed")});
+  const sf=$("signForm");if(sf)sf.addEventListener("submit",async e=>{e.preventDefault();const em=$("emailIn").value.trim(),btn=$("signBtn"),st=$("signStatus");btn.disabled=true;st.innerHTML=`<div class="status"><span class="spin"></span>Sending…</div>`;
+    try{await sendLink(em);st.innerHTML=`<p class="hint">Check <b>${esc(em)}</b> for a sign-in link. It can take a minute; look in spam if it doesn't arrive.</p>`}
+    catch(x){st.innerHTML=`<p class="err">${/rate|seconds/i.test(x&&x.message||"")?"Too many sign-in emails. Wait a minute, then try again.":"Couldn't send the email. Check the address and try again."}</p>`;btn.disabled=false}})}
 
 /* ---------- render ---------- */
 function render(){renderRecipes();renderPlan();renderShop();renderBadge()}
 function recipeArr(){return Object.values(S.recipes).filter(r=>r&&r.title).sort((a,b)=>a.title.localeCompare(b.title))}
 function renderRecipes(){
   const all=recipeArr();
-  const cats=["All",...[...new Set(all.map(r=>r.category).filter(Boolean))].sort()];
+  const favN=all.filter(r=>r.fav).length;const cats=["All",...(favN?["__fav"]:[]),...[...new Set(all.map(r=>r.category).filter(Boolean))].sort()];
   if(!cats.includes(S.cat))S.cat="All";
-  $("cats").innerHTML=all.length?cats.map(c=>`<button class="chip" data-act="cat" data-cat="${esc(c)}" aria-pressed="${c===S.cat}">${esc(c)}</button>`).join(""):"";
+  $("cats").innerHTML=all.length?cats.map(c=>`<button class="chip" data-act="cat" data-cat="${esc(c)}" aria-pressed="${c===S.cat}">${c==="__fav"?"★ Favorites ("+favN+")":esc(c)}</button>`).join(""):"";
   const q=S.q.toLowerCase().trim();
-  const list=all.filter(r=>(S.cat==="All"||r.category===S.cat)&&(!q||[r.title,r.category,...(r.tags||[]),...(r.ingredients||[]).map(i=>i.item)].join(" ").toLowerCase().includes(q)));
+  const list=all.filter(r=>(S.cat==="All"||(S.cat==="__fav"?r.fav:r.category===S.cat))&&(!q||[r.title,r.category,...(r.tags||[]),...(r.ingredients||[]).map(i=>i.item)].join(" ").toLowerCase().includes(q)));
   const el=$("recipeList");
   if(!all.length){el.innerHTML=`<div class="empty"><h2>Your recipe book is empty</h2><p>Add a recipe from a screenshot, from text you copy off a recipe site, or type it in. Claude pulls out the ingredients and steps so they can feed your weekly plan and shopping list.</p><div class="row"><button class="btn primary" data-act="add">+ Add your first recipe</button><button class="btn" data-act="examples">Load 3 example recipes</button></div></div>`;return}
-  el.innerHTML=`<p class="count">${list.length} of ${all.length} recipe${all.length===1?"":"s"}</p>`+(list.length?`<div class="grid">${list.map(card).join("")}</div>`:`<div class="empty"><p>No recipes match “${esc(S.q)}”${S.cat!=="All"?" in "+esc(S.cat):""}.</p></div>`)}
-function card(r){return`<button class="card" data-act="open" data-id="${r.id}"><h3>${esc(r.title)}</h3><div class="meta">${[r.category,r.time,r.ingredients?.length?r.ingredients.length+" ingredients":""].filter(Boolean).map(esc).join("<span>·</span>")}</div>${(r.tags?.length||r.example)?`<div class="tags">${r.example?'<span class="tag ex">Example</span>':""}${(r.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div>`:""}</button>`}
+  el.innerHTML=`<p class="count">${list.length} of ${all.length} recipe${all.length===1?"":"s"}</p>`+(list.length?`<div class="grid">${list.map(card).join("")}</div>`:`<div class="empty"><p>No recipes match “${esc(S.q)}”${S.cat==="__fav"?" in your favorites":S.cat!=="All"?" in "+esc(S.cat):""}.</p></div>`)}
+function card(r){return`<div class="card"><button class="cardmain" data-act="open" data-id="${r.id}"><h3>${esc(r.title)}</h3><div class="meta">${[r.category,r.time,r.ingredients?.length?r.ingredients.length+" ingredients":""].filter(Boolean).map(esc).join("<span>·</span>")}</div>${(r.tags?.length||r.example)?`<div class="tags">${r.example?'<span class="tag ex">Example</span>':""}${(r.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div>`:""}</button><button class="star" data-act="fav" data-id="${r.id}" aria-pressed="${!!r.fav}" aria-label="${r.fav?"Remove from":"Add to"} favorites"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z" fill="${r.fav?"currentColor":"none"}" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg></button></div>`}
 
 function renderPlan(){
   const ws=S.week,tk=dkey(new Date());
@@ -372,7 +420,7 @@ function drawDetail(){const r=S.recipes[openId];if(!r)return closeSheet();
   const base=r.servings||null;
   openSheet(`<div class="phead"><div><h2>${esc(r.title)}</h2><div class="meta" style="margin-top:4px">${[r.category,r.time,base?base+" servings":""].filter(Boolean).map(esc).join("<span>·</span>")}</div></div>${closeBtn}</div>
   ${(r.tags?.length||r.example)?`<div class="tags" style="margin-bottom:12px">${r.example?'<span class="tag ex">Example</span>':""}${(r.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div>`:""}
-  <div class="row"><button class="btn primary" data-act="toPlan">Add to week</button><button class="btn" data-act="edit">Edit</button><button class="btn danger" data-act="del" id="delBtn">Delete</button></div>
+  <div class="row"><button class="btn primary" data-act="toPlan">Add to week</button><button class="btn" data-act="fav" data-id="${r.id}" aria-pressed="${!!r.fav}" style="${r.fav?"color:var(--saffron)":""}">${r.fav?"★ Favorite":"☆ Favorite"}</button><button class="btn" data-act="edit">Edit</button><button class="btn danger" data-act="del" id="delBtn">Delete</button></div>
   <div class="dsec"><h3>Ingredients <span class="scaler"><button class="iconbtn" data-act="scale" data-d="-0.5" aria-label="Make less">−</button>${base?fmtQty(base*scale)+" servings":"×"+fmtQty(scale)}<button class="iconbtn" data-act="scale" data-d="0.5" aria-label="Make more">+</button></span></h3>
   <ul class="ing">${(r.ingredients||[]).map(i=>`<li><span class="q">${esc([fmtQty(i.qty!=null?i.qty*scale:null),i.unit].filter(Boolean).join(" "))}</span><span>${esc(i.item)}${i.note?` <span class="n">${esc(i.note)}</span>`:""}</span></li>`).join("")||'<li><span></span><span class="n">No ingredients yet</span></li>'}</ul></div>
   <div class="dsec"><h3>Steps</h3>${(r.steps||[]).length?`<ol class="steps">${r.steps.map(s=>`<li><span>${esc(s)}</span></li>`).join("")}</ol>`:'<p class="hint">No steps yet.</p>'}</div>
@@ -384,8 +432,8 @@ function openPicker(date){pickDate=date;const d=new Date(date+"T12:00");
   openSheet(`<div class="phead"><div><h2>Add to ${DOW[d.getDay()]}</h2><div class="meta">${MON[d.getMonth()]} ${d.getDate()}</div></div>${closeBtn}</div>
   <input class="field" id="pickQ" type="search" placeholder="Search recipes" autocomplete="off"><div class="pick" id="pickList"></div>`);
   drawPick("");$("pickQ").addEventListener("input",e=>drawPick(e.target.value))}
-function drawPick(q){q=q.toLowerCase();const arr=recipeArr().filter(r=>!q||(r.title+" "+(r.tags||[]).join(" ")+" "+r.category).toLowerCase().includes(q));
-  $("pickList").innerHTML=arr.length?arr.map(r=>`<button data-act="pickRecipe" data-id="${r.id}"><span>${esc(r.title)}</span><small>${esc(r.category||"")}</small></button>`).join(""):`<p class="hint">${recipeArr().length?"No matches.":"No recipes yet. Add one first."}</p>`}
+function drawPick(q){q=q.toLowerCase();const arr=recipeArr().filter(r=>!q||(r.title+" "+(r.tags||[]).join(" ")+" "+r.category).toLowerCase().includes(q)).sort((a,b)=>(!!b.fav)-(!!a.fav));
+  $("pickList").innerHTML=arr.length?arr.map(r=>`<button data-act="pickRecipe" data-id="${r.id}"><span>${r.fav?'<span style="color:var(--saffron)">★</span> ':""}${esc(r.title)}</span><small>${esc(r.category||"")}</small></button>`).join(""):`<p class="hint">${recipeArr().length?"No matches.":"No recipes yet. Add one first."}</p>`}
 function openDayPicker(){const r=S.recipes[openId];const start=new Date();let html="";
   for(let i=0;i<14;i++){const d=addDays(start,i),k=dkey(d),n=(S.plan.days[k]||[]).length;html+=`<button data-act="pickDay" data-date="${k}"><span>${i===0?"Today":i===1?"Tomorrow":DOW[d.getDay()]} · ${MON[d.getMonth()]} ${d.getDate()}</span><small>${n?n+" planned":""}</small></button>`}
   openSheet(`<div class="phead"><div><h2>Which day?</h2><div class="meta">${esc(r.title)}</div></div>${closeBtn}</div><div class="pick">${html}</div>`)}
@@ -474,6 +522,9 @@ document.addEventListener("click",e=>{
   if(a==="add"){openAdd()}
   else if(a==="close"){closeSheet()}
   else if(a==="settings"){openSettings()}
+  else if(a==="fav"){toggleFav(t.dataset.id);if(!$("sheet").hidden&&openId===t.dataset.id&&$("delBtn"))drawDetail()}
+  else if(a==="syncNow"){pull().then(()=>toast(syncState==="offline"?"Couldn't reach your account":"Synced"))}
+  else if(a==="signOut"){if(!t.classList.contains("armed")){t.classList.add("armed");t.textContent="Tap again to sign out";return}signOut()}
   else if(a==="forgetKey"){try{localStorage.removeItem(KEYK)}catch(x){}closeSheet();toast("API key removed")}
   else if(a==="examples"){loadExamples()}
   else if(a==="cat"){S.cat=t.dataset.cat;renderRecipes()}
@@ -510,7 +561,7 @@ $("q").addEventListener("input",e=>{S.q=e.target.value;renderRecipes()});
 $("extraForm").addEventListener("submit",e=>{e.preventDefault();const v=$("extraIn").value.trim();if(!v)return;const w=shopWeek();w.extras.push({text:v,done:false});$("extraIn").value="";persist("shop");renderShop();renderBadge()});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("sheet").hidden)closeSheet()});
 
-loadLocal();render();connect();
+loadLocal();render();initCloud();setSync();
 </script>
 </body>
 </html>
