@@ -1,5 +1,6 @@
 -- Mise en Place: storage for recipes, favorites, meal plans and shopping lists.
 -- Run once in your Supabase project: SQL Editor -> New query -> paste -> Run.
+-- Recipe photos need storage.sql as well.
 --
 -- Each row belongs to one signed-in person:
 --   id = 'r_…'  a recipe (favorite flag is data->>'fav')

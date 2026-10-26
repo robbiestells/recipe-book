@@ -104,6 +104,7 @@ function normalize(r: Obj, source: string) {
     time: total,
     ingredients: list(r.recipeIngredient ?? r.ingredients).map(clean).filter(Boolean),
     steps: instructions(r.recipeInstructions),
+    image: imageUrl(r.image, source),
     source,
   };
 }
@@ -124,6 +125,19 @@ function instructions(v: unknown): string[] {
   };
   add(v);
   return out;
+}
+
+function imageUrl(v: unknown, base: string): string | null {
+  for (const x of ([] as unknown[]).concat(v ?? [])) {
+    const u = typeof x === "string" ? x : x && typeof x === "object" ? ((x as Obj).url ?? (x as Obj).contentUrl) : null;
+    if (typeof u === "string" && u.trim()) {
+      try {
+        const abs = new URL(u.trim(), base);
+        if (abs.protocol === "https:" || abs.protocol === "http:") return abs.href;
+      } catch { /* try the next one */ }
+    }
+  }
+  return null;
 }
 
 function servings(v: unknown): number | null {

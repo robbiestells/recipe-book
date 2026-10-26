@@ -7,11 +7,12 @@ A recipe book, weekly meal planner and shopping list in a single web page.
 ## What it does
 
 - **Add recipes** from a recipe website's link, screenshots, or pasted recipe text. Claude reads the title, ingredients, steps, servings, time, category and tags, and you review them before saving. You can also type a recipe in.
+- **Photos** on recipes: add one from your phone or an image link; link imports bring the site's photo along.
 - **Organize** by category and tag, and search across titles, tags and ingredients.
 - **Cook** in cooking mode: big-text steps you tap to check off, an ingredient checklist, the screen kept awake, and one-tap timers for any time a step mentions.
 - **Plan the week** (Sunday to Saturday) by adding recipes to each day.
 - **Favorite** recipes with the star, then filter to ★ Favorites or find them at the top of the day picker.
-- **Shop** from a list that combines every ingredient in the week's recipes, sorted by aisle, with checkboxes and room for extra items.
+- **Shop** from a list that combines every ingredient in the week's recipes into one line each (matching names like "garlic cloves" and "cloves garlic", and adding up cups, tablespoons, pounds and grams), sorted by aisle, with checkboxes, extra items and a Clear list button.
 
 ## Reading recipes
 
@@ -35,3 +36,4 @@ Without sync set up, everything is saved in the browser on the device you use.
 3. Open **Authentication → URL Configuration**. Set **Site URL** to `https://robbiestells.github.io/recipe-book/` and add the same address under **Redirect URLs**.
 4. Open **Project Settings → API** (or **API Keys**) and copy the **Project URL** and the **publishable / anon** key into [`config.js`](config.js). Both are safe to publish. Never put the secret or service_role key here.
 5. Deploy the link-import function: open **Edge Functions → Deploy a new function → Via Editor**, name it `recipe-from-url`, replace the sample code with [`supabase/functions/recipe-from-url/index.ts`](supabase/functions/recipe-from-url/index.ts), and deploy. The function itself refuses anyone who isn't signed in, so it can't be used as an open proxy.
+6. Turn on photo storage: in **SQL Editor**, run [`supabase/storage.sql`](supabase/storage.sql). It creates the `recipe-images` bucket and limits each person to their own folder.
