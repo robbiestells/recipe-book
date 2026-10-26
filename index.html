@@ -148,6 +148,44 @@ textarea.field{resize:vertical;min-height:90px;line-height:1.45}
 .pick button{text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;gap:10px;align-items:center}
 .pick button:hover{border-color:var(--basil)}
 .pick small{font-family:var(--f-mono);color:var(--muted);font-size:12px}
+/* Cooking mode */
+.cook{position:fixed;inset:0;z-index:25;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch}
+.cook .in{max-width:720px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:calc(env(safe-area-inset-top,0px) + 0px) calc(120px + env(safe-area-inset-bottom,0px))}
+.cookbar{position:sticky;top:0;z-index:2;background:var(--bg);border-bottom:1px solid var(--line);padding-block:calc(10px + env(safe-area-inset-top,0px)) 10px;display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-bottom:16px}
+.cookbar .top1{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.cookbar h2{flex:1 1 auto;font-size:20px;line-height:1.2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cookmeta{display:flex;justify-content:space-between;align-items:center;gap:10px;font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.progress{height:6px;background:var(--sunk);border-radius:99px;overflow:hidden}
+.progress span{display:block;height:100%;background:var(--basil);border-radius:inherit;transition:width .25s ease}
+.cook details{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);margin-bottom:18px}
+.cook summary{cursor:pointer;padding:12px 14px;font-family:var(--f-display);font-weight:700;font-size:17px;display:flex;justify-content:space-between;align-items:center;list-style:none}
+.cook summary::-webkit-details-marker{display:none}
+.cook summary small{font-family:var(--f-mono);font-weight:400;font-size:12px;color:var(--muted)}
+.cing{display:grid;grid-template-columns:auto 84px 1fr;gap:10px;align-items:center;padding:10px 14px;border-top:1px solid var(--line);cursor:pointer;font-size:17px}
+.cing input{width:22px;height:22px;margin:0;accent-color:var(--basil)}
+.cing .q{font-family:var(--f-mono);font-size:14px;color:var(--basil);text-align:right;font-variant-numeric:tabular-nums}
+.cing.done{color:var(--muted)}.cing.done .q{color:var(--muted)}
+.csteps{display:grid;gap:10px}
+.cstep{display:grid;grid-template-columns:44px 1fr;gap:12px;align-items:start;background:var(--surface);border:1.5px solid var(--line);border-radius:var(--r);padding:14px 14px 14px 12px}
+.cstep.current{border-color:var(--basil);box-shadow:0 0 0 3px color-mix(in srgb,var(--basil) 18%,transparent)}
+.cstep.done{background:transparent}
+.cstep.done .ctext{color:var(--muted)}
+.ccheck{width:40px;height:40px;border-radius:50%;border:2px solid var(--line);background:var(--bg);display:grid;place-items:center;font-family:var(--f-display);font-weight:700;font-size:17px;color:var(--muted)}
+.cstep.current .ccheck{border-color:var(--basil);color:var(--basil)}
+.cstep.done .ccheck{background:var(--basil);border-color:var(--basil);color:var(--basil-ink)}
+.ctext{font-size:19px;line-height:1.55;max-width:60ch;cursor:pointer}
+.ctimers{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.tbtn{border:1px solid var(--saffron);background:var(--saffron-soft);color:var(--ink);border-radius:999px;padding:6px 12px;font-size:14px;font-weight:600;display:inline-flex;gap:6px;align-items:center}
+.finish{margin-top:22px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px;display:grid;gap:10px;justify-items:start}
+.finish h3{font-size:20px}
+.timerbar{position:fixed;left:0;right:0;z-index:26;bottom:calc(var(--tabh) + env(safe-area-inset-bottom,0px));padding:8px max(12px,env(safe-area-inset-left,0px)) 8px max(12px,env(safe-area-inset-right,0px));display:flex;gap:8px;justify-content:center;flex-wrap:wrap;pointer-events:none}
+body.cooking .timerbar{bottom:env(safe-area-inset-bottom,0px)}
+.timer{pointer-events:auto;display:flex;align-items:center;gap:8px;background:var(--ink);color:var(--bg);border-radius:999px;padding:6px 6px 6px 14px;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.timer b{font-family:var(--f-mono);font-size:16px;font-variant-numeric:tabular-nums}
+.timer button{border:none;background:color-mix(in srgb,var(--bg) 18%,transparent);color:var(--bg);width:28px;height:28px;border-radius:50%;font-size:16px;line-height:1}
+.timer.ring{background:var(--tomato);animation:ring 1s ease-in-out infinite}
+@keyframes ring{50%{transform:scale(1.04)}}
+@media (prefers-reduced-motion:reduce){.timer.ring{animation:none}.progress span{transition:none}}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh) + 16px + env(safe-area-inset-bottom,0px));z-index:30;background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:14px;font-weight:500;max-width:calc(100% - 32px)}
 .local{font-size:12px;color:var(--muted);text-align:center;margin-top:24px}
 a{color:var(--basil)}
@@ -420,7 +458,7 @@ function drawDetail(){const r=S.recipes[openId];if(!r)return closeSheet();
   const base=r.servings||null;
   openSheet(`<div class="phead"><div><h2>${esc(r.title)}</h2><div class="meta" style="margin-top:4px">${[r.category,r.time,base?base+" servings":""].filter(Boolean).map(esc).join("<span>·</span>")}</div></div>${closeBtn}</div>
   ${(r.tags?.length||r.example)?`<div class="tags" style="margin-bottom:12px">${r.example?'<span class="tag ex">Example</span>':""}${(r.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div>`:""}
-  <div class="row"><button class="btn primary" data-act="toPlan">Add to week</button><button class="btn" data-act="fav" data-id="${r.id}" aria-pressed="${!!r.fav}" style="${r.fav?"color:var(--saffron)":""}">${r.fav?"★ Favorite":"☆ Favorite"}</button><button class="btn" data-act="edit">Edit</button><button class="btn danger" data-act="del" id="delBtn">Delete</button></div>
+  <div class="row">${(r.steps||[]).length?'<button class="btn primary" data-act="cookStart">Start cooking</button><button class="btn" data-act="toPlan">Add to week</button>':'<button class="btn primary" data-act="toPlan">Add to week</button>'}<button class="btn" data-act="fav" data-id="${r.id}" aria-pressed="${!!r.fav}" style="${r.fav?"color:var(--saffron)":""}">${r.fav?"★ Favorite":"☆ Favorite"}</button><button class="btn" data-act="edit">Edit</button><button class="btn danger" data-act="del" id="delBtn">Delete</button></div>
   <div class="dsec"><h3>Ingredients <span class="scaler"><button class="iconbtn" data-act="scale" data-d="-0.5" aria-label="Make less">−</button>${base?fmtQty(base*scale)+" servings":"×"+fmtQty(scale)}<button class="iconbtn" data-act="scale" data-d="0.5" aria-label="Make more">+</button></span></h3>
   <ul class="ing">${(r.ingredients||[]).map(i=>`<li><span class="q">${esc([fmtQty(i.qty!=null?i.qty*scale:null),i.unit].filter(Boolean).join(" "))}</span><span>${esc(i.item)}${i.note?` <span class="n">${esc(i.note)}</span>`:""}</span></li>`).join("")||'<li><span></span><span class="n">No ingredients yet</span></li>'}</ul></div>
   <div class="dsec"><h3>Steps</h3>${(r.steps||[]).length?`<ol class="steps">${r.steps.map(s=>`<li><span>${esc(s)}</span></li>`).join("")}</ol>`:'<p class="hint">No steps yet.</p>'}</div>
@@ -596,6 +634,48 @@ function loadExamples(){
   ex.forEach(e=>{const id=uid();S.recipes[id]={id,...e,example:true,notes:"",source:"",ingredients:e.ingredients.map(([qty,unit,item,note,section])=>({qty,unit,item,note,section})),created:Date.now(),updated:Date.now()};persist(id)});
   render();toast("Added 3 example recipes")}
 
+/* ---------- cooking mode ---------- */
+const COOKK="mise-cook-";let cook=null,wakeLock=null;
+function cookLoad(id){try{const d=JSON.parse(localStorage.getItem(COOKK+id)||"null");if(d&&Date.now()-d.t<12*3600e3)return{steps:new Set(d.s),ings:new Set(d.i)}}catch(e){}return{steps:new Set(),ings:new Set()}}
+function cookSave(){if(!cook)return;try{localStorage.setItem(COOKK+cook.id,JSON.stringify({s:[...cook.steps],i:[...cook.ings],t:Date.now()}))}catch(e){}}
+function cookClear(id){try{localStorage.removeItem(COOKK+id)}catch(e){}}
+async function keepAwake(on){try{if(on&&"wakeLock" in navigator&&document.visibilityState==="visible"){wakeLock=await navigator.wakeLock.request("screen");wakeLock.addEventListener("release",()=>{wakeLock=null;const n=$("awakeNote");if(n)n.textContent=""})}else if(!on&&wakeLock){await wakeLock.release();wakeLock=null}}catch(e){wakeLock=null}const n=$("awakeNote");if(n)n.textContent=wakeLock?"Screen stays on":""}
+document.addEventListener("visibilitychange",()=>{if(cook&&document.visibilityState==="visible"&&!wakeLock)keepAwake(true)});
+const TIME_RE=/(\d+(?:\.\d+)?|an?|one)(?:\s*(?:-|–|to)\s*(\d+(?:\.\d+)?))?\s*(hours?|hrs?|minutes?|mins?|seconds?|secs?)\b/gi;
+function stepTimes(text){const out=[];text=text.replace(/(\d+|an?|one)\s*(?:hours?|hrs?)\s*(?:and\s*)?(\d+)\s*(?:minutes?|mins?)\b/gi,(all,h,mn)=>{const hh=/^\d+$/.test(h)?+h:1,sec=hh*3600+(+mn)*60;if(sec<=12*3600)out.push({sec,label:hh+" hr "+mn+" min"});return " "});for(const m of text.matchAll(TIME_RE)){const n=/^(an?|one)$/i.test(m[1])?1:parseFloat(m[1]);if(!n)continue;const u=m[3].toLowerCase();const mult=u.startsWith("h")?3600:u.startsWith("s")?1:60;const sec=Math.round(n*mult);if(sec<10||sec>12*3600)continue;
+  const label=(m[2]?m[1]+"–"+m[2]:/^(an?|one)$/i.test(m[1])?"1":m[1])+" "+(mult===3600?"hr":mult===1?"sec":"min");if(!out.some(o=>o.sec===sec))out.push({sec,label})}return out.slice(0,3)}
+function openCook(id){const r=S.recipes[id];if(!r)return;cook={id,...cookLoad(id)};
+  let el=$("cook");if(!el){el=document.createElement("div");el.id="cook";el.className="cook";el.setAttribute("role","dialog");el.setAttribute("aria-modal","true");document.body.append(el)}
+  el.hidden=false;document.body.classList.add("cooking");drawCook();keepAwake(true)}
+function redrawCook(scroll){const d=$("cookIngs"),op=d?d.open:null;drawCook(scroll);const n=$("cookIngs");if(n&&op!==null)n.open=op}
+function closeCook(){$("cook").hidden=true;document.body.classList.remove("cooking");keepAwake(false);cook=null}
+function drawCook(scrollToCurrent){const r=S.recipes[cook.id];if(!r)return closeCook();const el=$("cook");
+  const steps=r.steps||[],ings=r.ingredients||[];const done=cook.steps.size,cur=steps.findIndex((s,i)=>!cook.steps.has(i));
+  const pct=steps.length?Math.round(done/steps.length*100):0;
+  el.innerHTML=`<div class="in"><div class="cookbar"><div class="top1"><h2>${esc(r.title)}</h2><button class="btn" data-act="cookClose">Done</button></div>
+    <div class="cookmeta"><span>${steps.length?(cur<0?"All steps done":"Step "+(cur+1)+" of "+steps.length):"No steps yet"}</span><span id="awakeNote">${wakeLock?"Screen stays on":""}</span></div>
+    <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div></div>
+  ${ings.length?`<details ${done?"":"open"} id="cookIngs"><summary>Ingredients <small>${cook.ings.size} of ${ings.length} ready${scale!==1?" · ×"+esc(fmtQty(scale)):""}</small></summary>
+    ${ings.map((i,ix)=>`<label class="cing${cook.ings.has(ix)?" done":""}"><input type="checkbox" data-act="cookIng" data-ix="${ix}" ${cook.ings.has(ix)?"checked":""}><span class="q">${esc([fmtQty(i.qty!=null?i.qty*scale:null),i.unit].filter(Boolean).join(" "))}</span><span>${esc(i.item)}${i.note?` <span style="color:var(--muted)">${esc(i.note)}</span>`:""}</span></label>`).join("")}</details>`:""}
+  <div class="csteps">${steps.map((s,ix)=>{const d=cook.steps.has(ix),times=stepTimes(s);
+    return`<div class="cstep${d?" done":""}${ix===cur?" current":""}" id="cs${ix}"><button class="ccheck" data-act="cookStep" data-ix="${ix}" aria-pressed="${d}" aria-label="${d?"Mark step "+(ix+1)+" not done":"Mark step "+(ix+1)+" done"}">${d?"✓":ix+1}</button>
+      <div><div class="ctext" data-act="cookStep" data-ix="${ix}">${esc(s)}</div>${times.length&&!d?`<div class="ctimers">${times.map(t=>`<button class="tbtn" data-act="timer" data-sec="${t.sec}" data-label="${esc("Step "+(ix+1)+" · "+t.label)}">⏱ ${esc(t.label)}</button>`).join("")}</div>`:""}</div></div>`}).join("")}</div>
+  ${steps.length&&cur<0?`<div class="finish"><h3>All done. Enjoy!</h3><p class="hint" style="margin:0">Your checkmarks clear when you finish.</p><div class="row"><button class="btn primary" data-act="cookFinish">Finish cooking</button><button class="btn ghost" data-act="cookReset">Start over</button></div></div>`:
+    done||cook.ings.size?`<div style="margin-top:18px"><button class="btn ghost" data-act="cookReset">Clear checkmarks</button></div>`:""}</div>`;
+  if(scrollToCurrent&&cur>=0){const c=$("cs"+cur);if(c){const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;c.scrollIntoView({behavior:reduce?"auto":"smooth",block:"center"})}}}
+
+/* timers keep running when cooking mode is closed; they show in a bar above the tabs */
+let timers=[],tick=null,actx=null;
+function startTimer(sec,label){try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();actx.resume()}catch(e){}
+  timers.push({id:Math.random().toString(36).slice(2),label,end:Date.now()+sec*1000,ring:false});drawTimers();if(!tick)tick=setInterval(drawTimers,1000);toast("Timer started")}
+function beep(){try{if(!actx)return;const t0=actx.currentTime;for(let k=0;k<3;k++){const o=actx.createOscillator(),g=actx.createGain();o.frequency.value=880;g.gain.setValueAtTime(.0001,t0+k*.35);g.gain.exponentialRampToValueAtTime(.3,t0+k*.35+.02);g.gain.exponentialRampToValueAtTime(.0001,t0+k*.35+.28);o.connect(g).connect(actx.destination);o.start(t0+k*.35);o.stop(t0+k*.35+.3)}}catch(e){}try{navigator.vibrate&&navigator.vibrate([300,150,300])}catch(e){}}
+function drawTimers(){let bar=$("timerbar");if(!bar){bar=document.createElement("div");bar.id="timerbar";bar.className="timerbar";bar.setAttribute("aria-live","polite");document.body.append(bar)}
+  const now=Date.now();for(const t of timers)if(!t.ring&&t.end<=now){t.ring=true;t.rang=now;beep();toast(t.label+" is done")}
+  for(const t of timers)if(t.ring&&now-t.rang>=10000&&now-t.rang<11000)beep();
+  bar.innerHTML=timers.map(t=>{const left=Math.max(0,Math.ceil((t.end-now)/1000)),h=Math.floor(left/3600),m=Math.floor(left%3600/60),s=left%60;
+    return`<div class="timer${t.ring?" ring":""}"><span>${esc(t.label)}</span><b>${t.ring?"Done":(h?h+":"+String(m).padStart(2,"0"):m)+":"+String(s).padStart(2,"0")}</b><button data-act="timerStop" data-tid="${t.id}" aria-label="${t.ring?"Dismiss":"Cancel"} timer">×</button></div>`}).join("");
+  bar.hidden=!timers.length;if(!timers.length&&tick){clearInterval(tick);tick=null}}
+
 /* ---------- events ---------- */
 document.addEventListener("click",e=>{
   const t=e.target.closest("[data-act],[data-tab]");if(!t)return;
@@ -604,6 +684,13 @@ document.addEventListener("click",e=>{
   if(a==="add"){openAdd()}
   else if(a==="close"){closeSheet()}
   else if(a==="settings"){openSettings()}
+  else if(a==="cookStart"){openCook(openId)}
+  else if(a==="cookClose"){closeCook()}
+  else if(a==="cookStep"){const ix=+t.dataset.ix;const was=cook.steps.has(ix);was?cook.steps.delete(ix):cook.steps.add(ix);cookSave();redrawCook(!was)}
+  else if(a==="cookReset"){cook.steps.clear();cook.ings.clear();cookClear(cook.id);drawCook();$("cook").scrollTo(0,0)}
+  else if(a==="cookFinish"){cookClear(cook.id);closeCook();toast("Nice work!")}
+  else if(a==="timer"){startTimer(+t.dataset.sec,t.dataset.label)}
+  else if(a==="timerStop"){timers=timers.filter(x=>x.id!==t.dataset.tid);drawTimers()}
   else if(a==="fav"){toggleFav(t.dataset.id);if(!$("sheet").hidden&&openId===t.dataset.id&&$("delBtn"))drawDetail()}
   else if(a==="syncNow"){pull().then(()=>toast(syncState==="offline"?"Couldn't reach your account":"Synced"))}
   else if(a==="signOut"){if(!t.classList.contains("armed")){t.classList.add("armed");t.textContent="Tap again to sign out";return}signOut()}
@@ -637,11 +724,12 @@ document.addEventListener("click",e=>{
     navigator.clipboard.writeText(txt).then(()=>toast("List copied")).catch(()=>{openSheet(`<div class="phead"><h2>Copy your list</h2>${closeBtn}</div><textarea class="field" id="copyBox" rows="14" readonly>${esc(txt)}</textarea>`);const b=$("copyBox");b.focus();b.select()})}
 });
 document.addEventListener("change",e=>{const t=e.target;
+  if(t.dataset.act==="cookIng"&&cook){const ix=+t.dataset.ix;t.checked?cook.ings.add(ix):cook.ings.delete(ix);cookSave();redrawCook(false);return}
   if(t.dataset.act==="check"){const w=shopWeek();if(t.checked)w.checked[t.dataset.key]=1;else delete w.checked[t.dataset.key];persist("shop");renderShop();renderBadge()}
   else if(t.dataset.act==="extra"){const w=shopWeek();w.extras[+t.dataset.ix].done=t.checked;persist("shop");renderShop();renderBadge()}});
 $("q").addEventListener("input",e=>{S.q=e.target.value;renderRecipes()});
 $("extraForm").addEventListener("submit",e=>{e.preventDefault();const v=$("extraIn").value.trim();if(!v)return;const w=shopWeek();w.extras.push({text:v,done:false});$("extraIn").value="";persist("shop");renderShop();renderBadge()});
-document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("sheet").hidden)closeSheet()});
+document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;if(cook){closeCook();return}if(!$("sheet").hidden)closeSheet()});
 
 loadLocal();render();initCloud();setSync();
 </script>

@@ -8,6 +8,7 @@ A recipe book, weekly meal planner and shopping list in a single web page.
 
 - **Add recipes** from a recipe website's link, screenshots, or pasted recipe text. Claude reads the title, ingredients, steps, servings, time, category and tags, and you review them before saving. You can also type a recipe in.
 - **Organize** by category and tag, and search across titles, tags and ingredients.
+- **Cook** in cooking mode: big-text steps you tap to check off, an ingredient checklist, the screen kept awake, and one-tap timers for any time a step mentions.
 - **Plan the week** (Sunday to Saturday) by adding recipes to each day.
 - **Favorite** recipes with the star, then filter to ★ Favorites or find them at the top of the day picker.
 - **Shop** from a list that combines every ingredient in the week's recipes, sorted by aisle, with checkboxes and room for extra items.
