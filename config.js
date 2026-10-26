@@ -4,5 +4,5 @@
 // Leave them empty to keep everything in the browser only.
 window.MISE_CONFIG = {
   supabaseUrl: "https://zuzpkjvxihkkijbfgybu.supabase.co",
-  supabaseKey: ""    // Publishable (anon) key
+  supabaseKey: "sb_publishable_8P4jKfROavXf1g8zzMkwtg_b_rHkLsg"
 };
