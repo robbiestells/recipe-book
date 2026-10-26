@@ -14,7 +14,12 @@ A recipe book, weekly meal planner and shopping list in a single web page.
 
 ## Reading recipes
 
-Recipe reading calls the Anthropic API with your own key. Website import uses the API's web fetch tool, which opens the page on Anthropic's side; sites that require a login or block automated visits won't import. Open **Settings** (the gear icon), paste a key from [console.anthropic.com](https://console.anthropic.com/settings/keys), and save. The key is stored only in your browser and is sent only to `api.anthropic.com`.
+Recipes are read for free first; an Anthropic API key is optional.
+
+- **Links:** the `recipe-from-url` Supabase Edge Function opens the page on the server and reads the structured recipe card most recipe sites publish (schema.org `Recipe`). Requires being signed in.
+- **Screenshots:** text is read on your device with [Tesseract.js](https://github.com/naptha/tesseract.js), then split into ingredients and steps by their headings.
+- **Pasted text:** split into ingredients and steps by their headings.
+- **Claude fallback (optional):** add a key from [console.anthropic.com](https://console.anthropic.com/settings/keys) in **Settings**. When the free method can't find the recipe, Claude reads it instead (pages via the API's web fetch tool). The key is stored only in your browser and is sent only to `api.anthropic.com`.
 
 ## Where data lives
 
@@ -28,3 +33,4 @@ Without sync set up, everything is saved in the browser on the device you use.
 2. In the project, open **SQL Editor**, paste the contents of [`supabase/setup.sql`](supabase/setup.sql), and run it.
 3. Open **Authentication → URL Configuration**. Set **Site URL** to `https://robbiestells.github.io/recipe-book/` and add the same address under **Redirect URLs**.
 4. Open **Project Settings → API** (or **API Keys**) and copy the **Project URL** and the **publishable / anon** key into [`config.js`](config.js). Both are safe to publish. Never put the secret or service_role key here.
+5. Deploy the link-import function: open **Edge Functions → Deploy a new function → Via Editor**, name it `recipe-from-url`, replace the sample code with [`supabase/functions/recipe-from-url/index.ts`](supabase/functions/recipe-from-url/index.ts), and deploy. Leave **Verify JWT** on so only signed-in users can call it.
