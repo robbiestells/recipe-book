@@ -1,6 +1,6 @@
 # Mise en Place
 
-A recipe book, weekly meal planner and shopping list in a single web page.
+A recipe book, weekly meal planner and shopping list in a single web page, styled as a restaurant ticket rail: recipes hang as order tickets on chrome rails, a red LED ticker shows what's firing tonight, and the shopping list prints as a receipt.
 
 **Live site:** https://robbiestells.github.io/recipe-book/
 
