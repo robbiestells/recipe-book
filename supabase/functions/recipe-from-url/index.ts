@@ -16,6 +16,7 @@ const json = (body: unknown, status = 200) =>
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  if (!(await isSignedIn(req))) return json({ error: "signed_out" }, 401);
 
   let target: URL;
   try {
@@ -159,6 +160,22 @@ function clean(v: unknown): string {
 }
 
 // ---------- safety ----------
+
+// Only signed-in people may use the function. Checked here, not just with the
+// dashboard's "Verify JWT" switch, because that switch doesn't apply to the
+// newer publishable keys: the request's user token is confirmed with Supabase Auth.
+async function isSignedIn(req: Request): Promise<boolean> {
+  const auth = req.headers.get("authorization") ?? "";
+  const base = Deno.env.get("SUPABASE_URL");
+  const key = req.headers.get("apikey") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  if (!base || !/^Bearer\s+ey/i.test(auth)) return false; // user tokens are JWTs; a bare publishable key isn't
+  try {
+    const r = await fetch(`${base}/auth/v1/user`, { headers: { authorization: auth, apikey: key } });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
 
 function isPrivateHost(host: string): boolean {
   const h = host.toLowerCase().replace(/^\[|\]$/g, "");
