@@ -3,6 +3,6 @@
 // keeps every person's recipes, plans and shopping lists private to them.
 // Leave them empty to keep everything in the browser only.
 window.MISE_CONFIG = {
-  supabaseUrl: "",   // Project URL, e.g. https://abcdefghijkl.supabase.co
+  supabaseUrl: "https://zuzpkjvxihkkijbfgybu.supabase.co",
   supabaseKey: ""    // Publishable (anon) key
 };
