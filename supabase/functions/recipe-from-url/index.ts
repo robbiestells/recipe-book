@@ -19,9 +19,11 @@ Deno.serve(async (req) => {
   if (!(await isSignedIn(req))) return json({ error: "signed_out" }, 401);
 
   let target: URL;
+  let imageOnly = false;
   try {
-    const { url } = await req.json();
-    target = new URL(String(url));
+    const body = await req.json();
+    target = new URL(String(body.url));
+    imageOnly = body.imageOnly === true;
   } catch {
     return json({ error: "bad_url" });
   }
@@ -49,10 +51,69 @@ Deno.serve(async (req) => {
   if (!res.ok) return json({ error: "unreachable", status: res.status });
 
   const html = (await res.text()).slice(0, 5_000_000);
+  const base = res.url || target.href;
   const recipe = findRecipe(html);
+  // Photo: the recipe card's image, else the page's share image (og:image / twitter:image).
+  const image = (recipe && imageUrl(recipe.image, base)) || metaImage(html, base);
+  const imageData = image ? await fetchImage(image) : null;
+  if (imageOnly) return json({ image, imageData });
   if (!recipe) return json({ error: "no_recipe_data" });
-  return json({ recipe: normalize(recipe, res.url || target.href) });
+  return json({ recipe: { ...normalize(recipe, base), image }, imageData });
 });
+
+// The page's share image, used when the recipe card has none.
+function metaImage(html: string, base: string): string | null {
+  const head = html.slice(0, 400_000);
+  for (const key of ["og:image:secure_url", "og:image", "twitter:image", "twitter:image:src"]) {
+    const k = key.replace(/[:]/g, "\\:");
+    const a = head.match(new RegExp(`<meta[^>]+(?:property|name)\\s*=\\s*["']${k}["'][^>]*content\\s*=\\s*["']([^"']+)["']`, "i")) ||
+      head.match(new RegExp(`<meta[^>]+content\\s*=\\s*["']([^"']+)["'][^>]*(?:property|name)\\s*=\\s*["']${k}["']`, "i"));
+    if (a) {
+      try {
+        const u = new URL(a[1].replace(/&amp;/g, "&").trim(), base);
+        if (u.protocol === "https:" || u.protocol === "http:") return u.href;
+      } catch { /* next */ }
+    }
+  }
+  const link = head.match(/<link[^>]+rel\s*=\s*["']image_src["'][^>]*href\s*=\s*["']([^"']+)["']/i);
+  if (link) {
+    try { return new URL(link[1], base).href; } catch { /* none */ }
+  }
+  return null;
+}
+
+// Downloads the photo so the app can keep its own copy (many sites block hotlinking).
+// Returns a data: URL, or null if it isn't a reasonably sized image.
+async function fetchImage(src: string): Promise<string | null> {
+  let u: URL;
+  try { u = new URL(src); } catch { return null; }
+  if (!/^https?:$/.test(u.protocol) || isPrivateHost(u.hostname)) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const r = await fetch(u, {
+      signal: ctl.signal,
+      redirect: "follow",
+      headers: {
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+        "accept": "image/avif,image/webp,image/jpeg,image/png,image/*;q=0.8",
+        "referer": u.origin + "/",
+      },
+    });
+    if (!r.ok) return null;
+    const type = (r.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+    if (!/^image\/(jpeg|jpg|png|webp|gif|avif)$/.test(type)) return null;
+    const buf = new Uint8Array(await r.arrayBuffer());
+    if (buf.length < 2000 || buf.length > 6_000_000) return null;
+    let bin = "";
+    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+    return `data:${type};base64,${btoa(bin)}`;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // ---------- extraction ----------
 

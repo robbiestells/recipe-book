@@ -18,7 +18,7 @@ A recipe book, weekly meal planner and shopping list in a single web page, style
 
 Recipes are read for free first; an Anthropic API key is optional.
 
-- **Links:** the `recipe-from-url` Supabase Edge Function opens the page on the server and reads the structured recipe card most recipe sites publish (schema.org `Recipe`). Requires being signed in.
+- **Links:** the `recipe-from-url` Supabase Edge Function opens the page on the server and reads the structured recipe card most recipe sites publish (schema.org `Recipe`). Requires being signed in. It also brings in the recipe's photo (from the recipe card, or the page's share image), downloads it and saves a copy to your photo storage, so it keeps working even on sites that block hotlinking. Recipes read by Claude or from pasted text with a link get a photo the same way. **Redeploy the function after updating** so imports pick this up.
 - **Screenshots:** text is read on your device with [Tesseract.js](https://github.com/naptha/tesseract.js), then split into ingredients and steps by their headings.
 - **Pasted text:** split into ingredients and steps by their headings.
 - **Claude fallback (optional):** add a key from [console.anthropic.com](https://console.anthropic.com/settings/keys) in **Settings**. When the free method can't find the recipe, Claude reads it instead (pages via the API's web fetch tool). The key is stored only in your browser and is sent only to `api.anthropic.com`.

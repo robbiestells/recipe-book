@@ -296,6 +296,8 @@ textarea.field{resize:vertical;min-height:90px;line-height:1.45}
 .cstep.current .ccheck{background:var(--red);border-color:var(--red);color:#FFFFFF}
 .cstep.done .ccheck{background:var(--ink);color:#FFFFFF}
 .cstep.done .ctext{text-decoration:line-through;text-decoration-color:var(--red);text-decoration-thickness:2px}
+.cstep:not(.done) .fired,.cstep.done .ctimers{display:none}
+.cook{overflow-anchor:none}
 .cstep .fired{position:absolute;right:10px;top:-10px;border:2px solid var(--red);color:var(--red);background:rgba(255,255,255,.9);font-family:var(--f-cond);font-weight:800;font-size:13px;letter-spacing:.1em;padding:0 6px;transform:rotate(6deg)}
 .cstep.justdone .fired{animation:thunk 420ms cubic-bezier(.3,1.4,.5,1) both}
 .ctext{font-size:19px;line-height:1.5;max-width:60ch;cursor:pointer;font-family:var(--f-mono)}
@@ -797,7 +799,7 @@ async function importFromUrl(url,signal,say){
   if(cloud()){say("Opening the page…");
     try{const{data,error}=await sb.functions.invoke("recipe-from-url",{body:{url}});
       if(error){const st=error.context&&error.context.status;free=error.name==="FunctionsFetchError"?"fn_unreachable":st===404?"fn_missing":st===401?"signed_out":"failed"}
-      else if(data&&data.recipe&&data.recipe.ingredients&&data.recipe.ingredients.length)return{recipe:fromStructured(data.recipe,url),via:"free"};
+      else if(data&&data.recipe&&data.recipe.ingredients&&data.recipe.ingredients.length)return{recipe:fromStructured(data.recipe,url),via:"free",imageData:data.imageData||null};
       else free=(data&&data.error)||"no_recipe_data"}
     catch(e){free="failed"}}
   if(signal.aborted)throw{code:"cancelled"};
@@ -832,12 +834,23 @@ const IMPORT_ERR={
   invalid_json:"The recipe came back in a form the app couldn't read. Try again.",prompt_too_large:"That's too long. Use just the recipe part.",
   bad_request:"Anthropic couldn't process that request. Try fewer or smaller screenshots.",fetch_disabled:"Website fetching is turned off for this API key's organization. Use a screenshot or paste the text.",
   fetch_url_not_accessible:"That page couldn't be opened. Check the link, or use a screenshot or pasted text.",fetch_url_not_allowed:"That site doesn't allow automated visits. Use a screenshot or paste the text instead."};
+// Pull in a photo for recipes imported from a web page. The server downloads it (many sites block
+// hotlinking), and it's resized and kept with the recipe, uploaded to your photo storage when signed in.
+async function attachPhoto(rec,imageData,say){
+  try{const src=rec.source||"";
+    if(!imageData&&!rec.image&&cloud()&&/^https?:\/\//i.test(src)){
+      say("Looking for a photo…");
+      const{data,error}=await sb.functions.invoke("recipe-from-url",{body:{url:src,imageOnly:true}});
+      if(!error&&data){imageData=data.imageData||null;if(!rec.image&&data.image)rec.image=data.image}}
+    if(imageData){const blob=await(await fetch(imageData)).blob();rec.image=await resizeImage(blob,cloud()?1400:900,cloud()?.82:.72)}
+  }catch(e){/* keep the link, or no photo */}}
 async function runImport(kind,p){
   const rb=$("readBtn");importCtl=new AbortController();const ctl=importCtl;
   const say=msg=>{const st=$("impStatus");if(st&&importCtl===ctl)st.innerHTML=`<div class="status"><span class="mini" aria-hidden="true"></span><span>${esc(msg)}</span><button class="btn ghost" data-act="stopImport">Stop</button></div>`};
   if(rb)rb.disabled=true;say("Working…");
   try{const res=kind==="web"?await importFromUrl(p.url,ctl.signal,say):kind==="shot"?await importFromShots(p.files,ctl.signal,say):await importFromText(p.text,p.url,ctl.signal,say);
-    if(ctl.signal.aborted)return;shotFiles=[];openEdit(null,{...res.recipe,via:res.via})}
+    if(ctl.signal.aborted)return;const rec={...res.recipe,via:res.via};await attachPhoto(rec,res.imageData,say);
+    if(ctl.signal.aborted)return;shotFiles=[];openEdit(null,rec)}
   catch(e){const st=$("impStatus");if(!st)return;const c=e&&e.code;
     const msg=c==="cancelled"?"":c==="claude_no_recipe"?(e.detail?"No recipe found: "+e.detail:"Couldn't find a recipe in that."):IMPORT_ERR[c]||(String(c||"").startsWith("fetch_")?"The page couldn't be read. Try a screenshot or pasted text.":"Something went wrong reading the recipe. Try again.");
     st.innerHTML=msg?`<p class="err">${esc(msg)}</p>`:"";const b2=$("readBtn");if(b2)b2.disabled=false}
@@ -916,16 +929,37 @@ function drawCook(scrollToCurrent){const r=S.recipes[cook.id];if(!r)return close
   const steps=r.steps||[],ings=r.ingredients||[];const done=cook.steps.size,cur=steps.findIndex((s,i)=>!cook.steps.has(i));
   const jd=justDone;justDone=-1;
   el.innerHTML=`<div class="in"><div class="cookbar"><div class="top1"><h2>${esc(r.title)}</h2><button class="btn" data-act="cookClose">Done</button></div>
-    <div class="cookmeta"><b>${steps.length?(cur<0?"ALL FIRED":"ON FIRE · STEP "+(cur+1)+" OF "+steps.length):"NO STEPS YET"}</b><span id="awakeNote">${wakeLock?"Screen stays on":""}</span></div>
-    <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${steps.length}" aria-valuenow="${done}">${steps.map((s,i)=>`<i class="${cook.steps.has(i)?"on":""}"></i>`).join("")}</div></div>
-  ${ings.length?`<details ${done?"":"open"} id="cookIngs"><summary>Mise <small>${cook.ings.size} of ${ings.length} ready${scale!==1?" · ×"+esc(fmtQty(scale)):""}</small></summary>
+    <div class="cookmeta"><b id="cookStat">${cookStat(steps.length,cur)}</b><span id="awakeNote">${wakeLock?"Screen stays on":""}</span></div>
+    <div class="progress" id="cookProg" role="progressbar" aria-valuemin="0" aria-valuemax="${steps.length}" aria-valuenow="${done}">${steps.map((s,i)=>`<i class="${cook.steps.has(i)?"on":""}"></i>`).join("")}</div></div>
+  ${ings.length?`<details ${done?"":"open"} id="cookIngs"><summary>Mise <small id="cookIngN">${cook.ings.size} of ${ings.length} ready${scale!==1?" · ×"+esc(fmtQty(scale)):""}</small></summary>
     ${ings.map((i,ix)=>`<label class="cing${cook.ings.has(ix)?" done":""}"><input type="checkbox" data-act="cookIng" data-ix="${ix}" ${cook.ings.has(ix)?"checked":""}><span class="q">${esc([fmtQty(i.qty!=null?i.qty*scale:null),i.unit].filter(Boolean).join(" "))}</span><span>${esc(i.item)}${i.note?` <span style="color:var(--muted)">${esc(i.note)}</span>`:""}</span></label>`).join("")}</details>`:""}
   <div class="csteps">${steps.map((s,ix)=>{const d=cook.steps.has(ix),times=stepTimes(s);
-    return`<div class="cstep${d?" done":""}${ix===cur?" current":""}${ix===jd?" justdone":""}" id="cs${ix}">${d?'<span class="fired" aria-hidden="true">FIRED</span>':""}<button class="ccheck" data-act="cookStep" data-ix="${ix}" aria-pressed="${d}" aria-label="${d?"Mark step "+(ix+1)+" not done":"Mark step "+(ix+1)+" done"}">${d?"✓":ix+1}</button>
-      <div><div class="ctext" data-act="cookStep" data-ix="${ix}">${esc(s)}</div>${times.length&&!d?`<div class="ctimers">${times.map(t=>`<button class="tbtn" data-act="timer" data-sec="${t.sec}" data-label="${esc("Step "+(ix+1)+" · "+t.label)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>${esc(t.label)}</button>`).join("")}</div>`:""}</div></div>`}).join("")}</div>
-  ${steps.length&&cur<0?`<div class="finish"><h3>Order up!</h3><p style="margin:0;font-size:12px;letter-spacing:.06em;color:#AEB4BA">Your checkmarks clear when you finish.</p><div class="row"><button class="btn fire" data-act="cookFinish">Finish cooking</button><button class="btn" data-act="cookReset">Start over</button></div></div>`:
-    done||cook.ings.size?`<div style="margin-top:18px"><button class="btn" data-act="cookReset" style="border-color:#AEB4BA;color:#FFFFFF">Clear checkmarks</button></div>`:""}</div>`;
-  if(scrollToCurrent&&cur>=0){const c=$("cs"+cur);if(c){const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;c.scrollIntoView({behavior:reduce?"auto":"smooth",block:"center"})}}}
+    return`<div class="cstep${d?" done":""}${ix===cur?" current":""}${ix===jd?" justdone":""}" id="cs${ix}"><span class="fired" aria-hidden="true">FIRED</span><button class="ccheck" data-act="cookStep" data-ix="${ix}" aria-pressed="${d}" aria-label="${d?"Mark step "+(ix+1)+" not done":"Mark step "+(ix+1)+" done"}">${d?"✓":ix+1}</button>
+      <div><div class="ctext" data-act="cookStep" data-ix="${ix}">${esc(s)}</div>${times.length?`<div class="ctimers">${times.map(t=>`<button class="tbtn" data-act="timer" data-sec="${t.sec}" data-label="${esc("Step "+(ix+1)+" · "+t.label)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>${esc(t.label)}</button>`).join("")}</div>`:""}</div></div>`}).join("")}</div>
+  <div id="cookFoot">${cookFootHtml(steps.length,cur,done)}</div></div>`;
+  if(scrollToCurrent)cookScrollToNext(cur)}
+const cookStat=(n,cur)=>n?(cur<0?"ALL FIRED":"ON FIRE · STEP "+(cur+1)+" OF "+n):"NO STEPS YET";
+function cookFootHtml(n,cur,done){return n&&cur<0?`<div class="finish"><h3>Order up!</h3><p style="margin:0;font-size:12px;letter-spacing:.06em;color:#AEB4BA">Your checkmarks clear when you finish.</p><div class="row"><button class="btn fire" data-act="cookFinish">Finish cooking</button><button class="btn" data-act="cookReset">Start over</button></div></div>`:
+  done||cook.ings.size?`<div style="margin-top:18px"><button class="btn" data-act="cookReset" style="border-color:#AEB4BA;color:#FFFFFF">Clear checkmarks</button></div>`:""}
+// Update checkmarks in place (no re-render), so nothing on the page shifts or collapses.
+function patchCook(){const r=S.recipes[cook.id];if(!r)return closeCook();const steps=r.steps||[],ings=r.ingredients||[];
+  const done=cook.steps.size,cur=steps.findIndex((s,i)=>!cook.steps.has(i));
+  const st=$("cookStat");if(st)st.textContent=cookStat(steps.length,cur);
+  const pg=$("cookProg");if(pg){pg.setAttribute("aria-valuenow",done);[...pg.children].forEach((b,i)=>b.classList.toggle("on",cook.steps.has(i)))}
+  steps.forEach((s,ix)=>{const el=$("cs"+ix);if(!el)return;const d=cook.steps.has(ix);el.classList.toggle("done",d);el.classList.toggle("current",ix===cur);
+    el.classList.remove("justdone");if(ix===justDone){void el.offsetWidth;el.classList.add("justdone")}
+    const b=el.querySelector(".ccheck");if(b){b.textContent=d?"✓":ix+1;b.setAttribute("aria-pressed",d);b.setAttribute("aria-label",(d?"Mark step "+(ix+1)+" not done":"Mark step "+(ix+1)+" done"))}});
+  justDone=-1;
+  const n=$("cookIngN");if(n)n.textContent=`${cook.ings.size} of ${ings.length} ready${scale!==1?" · ×"+fmtQty(scale):""}`;
+  document.querySelectorAll("#cook .cing").forEach((l,ix)=>l.classList.toggle("done",cook.ings.has(ix)));
+  const f=$("cookFoot");if(f){const h=cookFootHtml(steps.length,cur,done);if(f.innerHTML!==h)f.innerHTML=h}
+  return cur}
+// Bring the next step to the top of the screen, just under the sticky header.
+function cookScrollToNext(cur){const box=$("cook");if(!box)return;const el=cur>=0?$("cs"+cur):$("cookFoot");if(!el)return;
+  const bar=box.querySelector(".cookbar"),barH=bar?bar.getBoundingClientRect().height:0;
+  const top=box.scrollTop+el.getBoundingClientRect().top-box.getBoundingClientRect().top-barH-14;
+  const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  box.scrollTo({top:Math.max(0,top),behavior:reduce?"auto":"smooth"})}
 
 /* timers keep running when cooking mode is closed; they show in a bar above the tabs */
 let timers=[],tick=null,actx=null;
@@ -952,7 +986,7 @@ document.addEventListener("click",e=>{
   else if(a==="photoLinkSet"){const u=$("photoUrl").value.trim();if(!/^https?:\/\//i.test(u)){toast("Paste a link that starts with https://");return}editImage=u;drawPhotoField()}
   else if(a==="cookStart"){openCook(openId)}
   else if(a==="cookClose"){closeCook()}
-  else if(a==="cookStep"){const ix=+t.dataset.ix;const was=cook.steps.has(ix);was?cook.steps.delete(ix):cook.steps.add(ix);if(!was)justDone=ix;cookSave();redrawCook(!was)}
+  else if(a==="cookStep"){const ix=+t.dataset.ix;const was=cook.steps.has(ix);was?cook.steps.delete(ix):cook.steps.add(ix);if(!was)justDone=ix;cookSave();const cur=patchCook();if(!was)cookScrollToNext(cur)}
   else if(a==="cookReset"){cook.steps.clear();cook.ings.clear();cookClear(cook.id);drawCook();$("cook").scrollTo(0,0)}
   else if(a==="cookFinish"){cookClear(cook.id);closeCook();toast("Nice work!")}
   else if(a==="timer"){startTimer(+t.dataset.sec,t.dataset.label)}
@@ -995,7 +1029,7 @@ document.addEventListener("click",e=>{
     navigator.clipboard.writeText(txt).then(()=>toast("List copied")).catch(()=>{openSheet(`<div class="phead"><h2>Copy your list</h2>${closeBtn}</div><textarea class="field" id="copyBox" rows="14" readonly>${esc(txt)}</textarea>`);const b=$("copyBox");b.focus();b.select()})}
 });
 document.addEventListener("change",e=>{const t=e.target;
-  if(t.dataset.act==="cookIng"&&cook){const ix=+t.dataset.ix;t.checked?cook.ings.add(ix):cook.ings.delete(ix);cookSave();redrawCook(false);return}
+  if(t.dataset.act==="cookIng"&&cook){const ix=+t.dataset.ix;t.checked?cook.ings.add(ix):cook.ings.delete(ix);cookSave();patchCook();return}
   if(t.dataset.act==="check"){const w=shopWeek();if(t.checked)w.checked[t.dataset.key]=1;else delete w.checked[t.dataset.key];persist("shop");t.closest(".item").classList.toggle("done",t.checked);syncShopCounts()}
   else if(t.dataset.act==="extra"){const w=shopWeek();w.extras[+t.dataset.ix].done=t.checked;persist("shop");t.closest(".item").classList.toggle("done",t.checked);syncShopCounts()}});
 $("q").addEventListener("input",e=>{S.q=e.target.value;renderRecipes()});
